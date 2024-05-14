@@ -1,0 +1,190 @@
+---
+title: "sta141a_project"
+authors: 'Ananya Ratakonda, Jamie Hui, and Dung Hoang'
+output: pdf_document
+date: "2023-12-15"
+---
+```{r}
+```
+
+```{r}
+# All the packages and Libraries 
+library(GGally)
+library(ggplot2)
+library(ISLR)
+library("tibble")
+library("dplyr")
+library("tidyr")
+
+```
+
+Data Processing 
+```{r}
+data <- read.table("../sta141a_Project/California_Houses.csv", sep = ",", header = T) # uploading all the data 
+data <- na.omit(data) # removing all the NA values 
+
+fullData = data %>% filter(data$Median_House_Value < 500000) # removing the outliers for the house values 
+head(data)
+summary(data)
+
+```
+
+```{r}
+
+incomeAndHousingValData = subset(fullData, select = c(Median_House_Value, Median_Income))
+
+# Converting the values 
+incomeAndHousingValData$Median_Income <- 10000*incomeAndHousingValData$Median_Income # need to convert the income values  muliply 10k 
+incomeAndHousingValData$Median_House_Value <- 1*incomeAndHousingValData$Median_House_Value  
+head(incomeAndHousingValData$Median_Income)
+
+# distanceData for linear regression of the house prices and the distance from different Metropolitan areas like sf, sd, la, san jose and coast
+distanceData <- subset(fullData, select = c(Median_House_Value, Distance_to_coast,
+                                       Distance_to_LA, Distance_to_SanDiego, Distance_to_SanJose,Distance_to_SanFrancisco))
+
+
+```
+
+Summaries 
+```{r}
+# Anaylsis the mean and the median, etc. 
+summary(incomeAndHousingValData) # housing and income
+summary(distanceData) # housing and distances to coast, LA, San Diego, San Jose, SF
+```
+
+
+Visualization and Methodology
+
+Linear Regression: Starting off with Median housing prices vs Median income
+```{r}
+head(incomeAndHousingValData)
+
+#histograms for median house value and median income 
+# histograms are gamma/chi squared? and not normal 
+ggplot(incomeAndHousingValData, aes(x=Median_House_Value))+
+   geom_histogram(aes(y = after_stat(density)), bins = 40) + labs(title = "Median Housing Value Density Histogram")
+
+ggplot(incomeAndHousingValData, aes(x=Median_Income))+
+   geom_histogram(aes(y = after_stat(density)), bins = 40) + labs(title = "Median Income Density Histogram")
+
+```
+
+Correlation
+```{r}
+  cor(incomeAndHousingValData$Median_Income,incomeAndHousingValData$Median_House_Value)
+```
+
+Linear regression between median Housing value and median income 
+```{r}
+ # median income is def gamma distribution whereas house value is either gamma or normal or both  
+# Gamma would work because all values are great than zero 
+# Gamma is the distribution we used because our data is right skewed with continuous positive values
+# poisson will not be a good idea for this type of data because it's not really discrete
+# for the link after experimenting for a but it seems that identity would not be a good idea because the 
+# line would have been y = 49926.1 + 38514.6(x) which doesn't really make sense for our data
+
+#verySimpleModel = glm(fullData$Median_House_Value ~ fullData$Median_Income, data = fullData,family = Gamma(link = "identity"))
+verySimpleModel = glm(incomeAndHousingValData$Median_House_Value ~ incomeAndHousingValData$Median_Income, data = incomeAndHousingValData,family =  Gamma(link = log))
+summary(verySimpleModel)
+head(incomeAndHousingValData)
+
+
+```
+The effect of Median Income on Median Housing Value is that if Median Income increases by one then log of Median Housing Value increases by 0.00002008. Keep in mind that our median income is converted to the 10k. 
+
+Test: H0 = B1 = 0 and Ha = B1 != 0
+
+The effect of Median Income is significant at alpha 0.01 therefore we can reject the null hypothesis that H0 = B1 = 0.
+
+```{r}
+# intercept 
+verySimpleModelBad = glm(incomeAndHousingValData$Median_House_Value ~ 1, data = incomeAndHousingValData,family =  Gamma(link = log))
+#summary(verySimpleModelBad)
+AIC(verySimpleModel)
+BIC(verySimpleModel)
+AIC(verySimpleModelBad)
+BIC(verySimpleModelBad)
+```
+We can see that the model with Median Income is a better model compared to the model with just intercept, because both the AIC and BIC is lower for the model with Median Income. ??
+
+```{r}
+residualForVerySimpleModel <- resid(verySimpleModel)
+fittedForVerySimpleModel <- fitted(verySimpleModel)
+
+# QQ-plot for the residual of the very simple model 
+ ggplot(fullData, aes(sample = residualForVerySimpleModel)) + 
+  stat_qq() + stat_qq_line() + labs(title = "QQ-plot of Median House Value and Median Income Model")
+
+```
+
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Multiple Linear Regression/ Logistic regression 
+We will be looking at: Does being part of a metropolitan area play a part in a higher average cost of living? Might need to change this later 
+
+
+```{r}
+fullModel = glm(Median_House_Value~(.), distanceData,family =  Gamma(link = log))
+fullModel
+summary(fullModel)
+
+```
+
+```{r}
+badModel = glm(distanceData$Median_House_Value~1, distanceData ,family =  Gamma(link = log))
+
+summary(badModel)
+
+residualForVeryFullModel <- resid(fullModel)
+fittedForVeryFullModel <- fitted(fullModel)
+
+ ggplot(fullData, aes(sample = residualForVeryFullModel)) + 
+  stat_qq() + stat_qq_line() + labs(title = "QQ-plot of Median House Value and Distance Full Model")
+
+ggpairs(distanceData)
+
+```
+```{r}
+# ANVOA AND ALSO F-TEST
+
+anova( fullModel, test = 'LRT')
+```
+F-test
+Ho = B1 = B2 = B3 = B4 = B5 = 0, Ha: B1 != 0 OR B2 != 0 OR B3 != 0 OR B4 != 0 OR B5 != 0
+At 0.001 we can reject the null. 
+
+
+
+```{r}
+smallerModel = glm(Median_House_Value~Distance_to_coast + Distance_to_LA + Distance_to_SanFrancisco, distanceData ,family =  Gamma(link = log))
+smallerModel
+summary(smallerModel)
+
+residualForVerySmallerModel <- resid(smallerModel)
+fittedForVerySmallerModel <- fitted(smallerModel)
+
+ ggplot(fullData, aes(sample = residualForVerySmallerModel)) + 
+  stat_qq() + stat_qq_line() + labs(title = "QQ-plot of Median House Value and Distance Reduced Model")
+
+```
+F-test
+Ho = B1 = B2 = B3 = B4 = B5 = 0, Ha: B1 != 0 OR B2 != 0 OR B3 != 0 OR B4 != 0 OR B5 != 0
+
+ANOVA
+```{r}
+anova(smallerModel, fullModel, test = 'LRT')
+```
+H0 = B1 = B2 = B5 = 0, HA B1 != 0 OR B2 != 0 OR B5 != 0
+We cannot reject the null hypothesis at alpha 0.001 therefore we choose the small model and get rid of the full model.
+
+```{r}
+sprintf("The AIC for Bad Model: %f",AIC(badModel))
+sprintf("The BIC for Bad Model: %f",BIC(badModel))
+sprintf("The AIC for Full Model: %f",AIC(fullModel))
+sprintf("The BIC for Full Model: %f",BIC(fullModel))
+sprintf("The AIC for Reduced Model: %f",AIC(smallerModel))
+sprintf("The BIC for Reduced Model: %f",BIC(smallerModel))
+
+```
+We can see that the bad model is the worst model by looking at the aic and bic since it has the largest value. I would say that smaller model would be the best as it has the lowest BIC despite the AIC being greater than the AIC for full model. 
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
